@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DEADLines</title>
+  <style>
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px auto;
+      max-width: 1100px;
+      background-color: #1a1a1a;
+      color: #e0e0e0;
+    }
+
+    h1 {
+      color: #ff6b35;
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-top: 0;
+      margin-bottom: 20px;
+    }
+
+    .add-form {
+      background: #252525;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    .add-form input, .add-form textarea {
+      display: block;
+      margin-bottom: 10px;
+      padding: 8px 10px;
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #3a3a3a;
+      border-radius: 6px;
+      font-size: 14px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+
+    /* no resize handle on notes */
+    .add-form textarea { resize: none; }
+
+    .add-form input:focus, .add-form textarea:focus {
+      outline: none;
+      border-color: #ff6b35;
+    }
+
+    .add-form input::placeholder, .add-form textarea::placeholder { color: #555; }
+
+    .add-form button {
+      padding: 8px 18px;
+      background-color: #ff6b35;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    .add-form button:hover { background-color: #e55a25; }
+
+    .filters {
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .filters button {
+      margin-right: 5px;
+      padding: 5px 14px;
+      cursor: pointer;
+      border: 1px solid #3a3a3a;
+      border-radius: 20px;
+      background: #252525;
+      color: #ccc;
+      font-size: 13px;
+    }
+
+    .filters button:hover { background: #333; color: #fff; }
+
+    .stats {
+      text-align: center;
+      margin-bottom: 14px;
+      color: #666;
+      font-size: 14px;
+    }
+
+    .stats b { color: #ff6b35; }
+
+    /* two column layout: table on left, achievements on right */
+    .main-layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .table-col { flex: 1; min-width: 0; }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: #252525;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    th {
+      background-color: #2e2e2e;
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid #3a3a3a;
+      font-size: 13px;
+      color: #888;
+    }
+
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #2e2e2e;
+      vertical-align: top;
+      font-size: 14px;
+      color: #d0d0d0;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tr.done td {
+      text-decoration: line-through;
+      color: #555;
+    }
+
+    tr.urgent-red    { background-color: #2e1515; }
+    tr.urgent-orange { background-color: #2e2010; }
+    tr.urgent-yellow { background-color: #252510; }
+
+    .delete-btn {
+      color: #ff6b35;
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-size: 13px;
+      padding: 0;
+      opacity: 0.4;
+    }
+
+    .delete-btn:hover { opacity: 1; }
+
+    /* achievements sidebar */
+    #achievements {
+      width: 220px;
+      flex-shrink: 0;
+      background: #252525;
+      padding: 16px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    #achievements h2 {
+      margin-top: 0;
+      font-size: 0.95rem;
+      color: #ff6b35;
+    }
+
+    #achievements ul {
+      padding-left: 16px;
+      margin: 0;
+      font-size: 13px;
+      color: #aaa;
+    }
+
+    #achievements li { margin-bottom: 8px; line-height: 1.4; }
+
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #ff6b35;
+      color: white;
+      padding: 10px 18px;
+      display: none;
+      font-size: 14px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    small { color: #666; }
+
+    p#empty-msg {
+      color: #555;
+      font-style: italic;
+      text-align: center;
+    }
+
+    input[type="checkbox"] { accent-color: #ff6b35; }
+
+  </style>
+</head>
+<body>
+
+<h1>DEADLines</h1>
+<p class="subtitle">Companion for schoolwork</p>
+
+<div class="add-form">
+  <b>Add new assignment</b><br><br>
+
+  <label>Title:</label>
+  <input type="text" id="f-title" placeholder="Enter assignment">
+
+  <label>Subject:</label>
+  <input type="text" id="f-subject" placeholder="Enter a subject">
+
+  <label>DEADline:</label>
+  <div style="display:flex; gap:8px; margin-bottom:10px">
+    <div style="flex:2">
+      <label style="font-size:13px; color:#666">Date</label>
+      <input type="text" id="f-date" placeholder="mm/dd/yyyy" style="width:100%; display:block; padding:8px 10px; box-sizing:border-box; border:1px solid #3a3a3a; border-radius:6px; font-size:14px; background:#1a1a1a; color:#e0e0e0;">
+    </div>
+    <div style="flex:1">
+      <label style="font-size:13px; color:#666">Time</label>
+      <input type="text" id="f-time" placeholder="00:00 - 23:59" style="width:100%; display:block; padding:8px 10px; box-sizing:border-box; border:1px solid #3a3a3a; border-radius:6px; font-size:14px; background:#1a1a1a; color:#e0e0e0;">
+    </div>
+  </div>
+
+  <label>Notes (optional):</label>
+  <textarea id="f-notes" rows="2" placeholder="Any notes"></textarea>
+
+  <button onclick="addAssignment()">Add</button>
+</div>
+
+<div class="filters">
+  <b style="color:#888">Filter:</b>
+  <button onclick="setFilter('all')">All</button>
+  <button onclick="setFilter('active')">Active</button>
+  <button onclick="setFilter('done')">Done</button>
+</div>
+
+<p class="stats">
+  Active: <b id="stat-active">0</b> &nbsp;|&nbsp;
+  Done: <b id="stat-done">0</b> &nbsp;|&nbsp;
+  Achievements: <b id="stat-ach">0</b>
+</p>
+
+<!-- two column layout -->
+<div class="main-layout">
+
+  <div class="table-col">
+    <p id="empty-msg" style="display:none">Stop lying. You have work to do.</p>
+    <table id="assignments-table">
+      <thead>
+        <tr>
+          <th>Done</th>
+          <th>Title</th>
+          <th>Subject</th>
+          <th>Deadline</th>
+          <th>Notes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="assignments-body"></tbody>
+    </table>
+  </div>
+
+  <div id="achievements" style="display:none">
+    <h2>⟡ Achievements ⟡</h2>
+    <ul id="ach-list"></ul>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+
+  var assignments = [];
+  var achievements = [];
+  var currentFilter = 'all';
+
+  function boot() {
+    fetch('/api/assignments')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { assignments = data; render(); });
+
+    fetch('/api/achievements')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { achievements = data; renderAchievements(); });
+  }
+
+  function getRowColor(assignment) {
+    if (assignment.completed) return 'done';
+    var hoursLeft = (new Date(assignment.deadline) - Date.now()) / 3600000;
+    if (hoursLeft < 24)  return 'urgent-red';
+    if (hoursLeft < 72)  return 'urgent-orange';
+    if (hoursLeft < 168) return 'urgent-yellow';
+    return '';
+  }
+
+  function formatDeadline(isoString) {
+    var date = new Date(isoString);
+    var hoursLeft = (date - Date.now()) / 3600000;
+    var str = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (hoursLeft < 0)       str += ' (OVERDUE)';
+    else if (hoursLeft < 24) str += ' (' + Math.round(hoursLeft) + 'h left!!)';
+    else if (hoursLeft < 48) str += ' (tomorrow)';
+    else                     str += ' (' + Math.round(hoursLeft / 24) + ' days)';
+    return str;
+  }
+
+  function setFilter(filter) { currentFilter = filter; render(); }
+
+  function render() {
+    var list = assignments.slice().sort(function(a, b) {
+      if (a.completed != b.completed) return a.completed ? 1 : -1;
+      return new Date(a.deadline) - new Date(b.deadline);
+    });
+
+    if (currentFilter === 'active') list = list.filter(function(a) { return !a.completed; });
+    if (currentFilter === 'done')   list = list.filter(function(a) { return  a.completed; });
+
+    var activeCount = assignments.filter(function(a) { return !a.completed; }).length;
+    var doneCount   = assignments.filter(function(a) { return  a.completed; }).length;
+    document.getElementById('stat-active').textContent = activeCount;
+    document.getElementById('stat-done').textContent   = doneCount;
+    document.getElementById('stat-ach').textContent    = achievements.length;
+
+    var tbody    = document.getElementById('assignments-body');
+    var emptyMsg = document.getElementById('empty-msg');
+    var table    = document.getElementById('assignments-table');
+
+    if (list.length === 0) {
+      tbody.innerHTML = '';
+      emptyMsg.style.display = 'block';
+      table.style.display = 'none';
+      return;
+    }
+
+    emptyMsg.style.display = 'none';
+    table.style.display = '';
+    tbody.innerHTML = '';
+
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      var row = document.createElement('tr');
+      row.className = getRowColor(a);
+
+      var checkCell = document.createElement('td');
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = !!a.completed;
+      checkbox.dataset.id = a.id;
+      checkbox.onclick = function() { toggleDone(this.dataset.id); };
+      checkCell.appendChild(checkbox);
+
+      var titleCell    = document.createElement('td'); titleCell.textContent = a.title;
+      var subjectCell  = document.createElement('td'); subjectCell.textContent = a.subject || '-';
+      var deadlineCell = document.createElement('td'); deadlineCell.textContent = formatDeadline(a.deadline);
+      var notesCell    = document.createElement('td'); notesCell.innerHTML = '<small>' + (a.notes || '') + '</small>';
+
+      var deleteCell = document.createElement('td');
+      var deleteBtn  = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = 'delete';
+      deleteBtn.dataset.id = a.id;
+      deleteBtn.onclick = function() { deleteAssignment(this.dataset.id); };
+      deleteCell.appendChild(deleteBtn);
+
+      row.appendChild(checkCell);
+      row.appendChild(titleCell);
+      row.appendChild(subjectCell);
+      row.appendChild(deadlineCell);
+      row.appendChild(notesCell);
+      row.appendChild(deleteCell);
+      tbody.appendChild(row);
+    }
+  }
+
+  function renderAchievements() {
+    var section = document.getElementById('achievements');
+    var list    = document.getElementById('ach-list');
+    if (achievements.length === 0) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    list.innerHTML = '';
+    for (var i = 0; i < achievements.length; i++) {
+      var item = document.createElement('li');
+      item.textContent = achievements[i].label + ' — ' + achievements[i].assignment_title;
+      list.appendChild(item);
+    }
+  }
+
+  function addAssignment() {
+    var title   = document.getElementById('f-title').value.trim();
+    var subject = document.getElementById('f-subject').value.trim();
+    var date    = document.getElementById('f-date').value;
+    var time    = document.getElementById('f-time').value.trim() || '23:59';
+    var notes   = document.getElementById('f-notes').value.trim();
+
+    if (!title) { alert('Please enter a title!'); return; }
+    if (!date)  { alert('Please set a deadline date!'); return; }
+
+    var deadline = date + 'T' + time + ':00';
+
+    fetch('/api/assignments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title, subject: subject, deadline: deadline, notes: notes })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(newAssignment) {
+      if (newAssignment.error) { alert(newAssignment.error); return; }
+      assignments.unshift(newAssignment);
+      document.getElementById('f-title').value   = '';
+      document.getElementById('f-subject').value = '';
+      document.getElementById('f-date').value    = '';
+      document.getElementById('f-time').value    = '';
+      document.getElementById('f-notes').value   = '';
+      render();
+      showToast('Added!');
+    });
+  }
+
+  function toggleDone(id) {
+    var assignment = null;
+    for (var i = 0; i < assignments.length; i++) {
+      if (assignments[i].id == id) { assignment = assignments[i]; break; }
+    }
+    if (!assignment) return;
+
+    fetch('/api/assignments/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed: !assignment.completed })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(updated) {
+      for (var i = 0; i < assignments.length; i++) {
+        if (assignments[i].id == id) { assignments[i] = updated; break; }
+      }
+      if (updated.new_achievement) {
+        achievements.unshift({ label: updated.new_achievement.label, assignment_title: updated.title });
+        renderAchievements();
+        showToast(updated.new_achievement.label);
+      }
+      render();
+    });
+  }
+
+  function deleteAssignment(id) {
+    if (!confirm('Delete this assignment?')) return;
+    fetch('/api/assignments/' + id, { method: 'DELETE' })
+      .then(function() {
+        assignments  = assignments.filter(function(a) { return a.id != id; });
+        achievements = achievements.filter(function(a) { return a.assignment_id != id; });
+        render();
+        renderAchievements();
+      });
+  }
+
+  var toastTimer;
+  function showToast(message) {
+    var toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function() { toast.style.display = 'none'; }, 2500);
+  }
+
+  setInterval(render, 60000);
+  boot();
+
+</script>
+</body>
+</html>
