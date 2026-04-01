@@ -309,7 +309,7 @@
     var hoursLeft = (date - Date.now()) / 3600000;
     var str = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (hoursLeft < 0)       str += ' (OVERDUE)';
-    else if (hoursLeft < 24) str += ' (' + Math.round(hoursLeft) + 'h left!!)';
+    else if (hoursLeft < 24) str += ' (' + Math.round(hoursLeft) + 'h left!)';
     else if (hoursLeft < 48) str += ' (tomorrow)';
     else                     str += ' (' + Math.round(hoursLeft / 24) + ' days)';
     return str;
