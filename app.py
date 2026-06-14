@@ -1,16 +1,26 @@
+# assignment tracker backend
+# sqlite for storage, ollama (qwen2.5:1.5b) for time estimates
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import sqlite3
 import os
+import requests
+import json
+import re
 from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
 
-# the .db file
 DB = "assignments.db"
 
-# creates the tables when the app starts, but doesnt overwrite it if its already there
+# ollama config
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL = "qwen2.5:1.5b"
+
+
+# creates tables on first run, safe to call every time
 def setup():
     conn = sqlite3.connect(DB)
     conn.execute("""CREATE TABLE IF NOT EXISTS assignments (
@@ -19,33 +29,43 @@ def setup():
         subject TEXT,
         deadline TEXT,
         notes TEXT,
+        estimated_hours REAL,
+        estimated_breakdown TEXT,
         completed INTEGER DEFAULT 0,  -- 0 = not done, 1 = done
         completed_at TEXT,
         created_at TEXT DEFAULT (datetime('now'))
     )""")
+    # added these two columns after the first version shipped, so we need to migrate old dbs
+    for col in ["estimated_hours REAL", "estimated_breakdown TEXT"]:
+        try:
+            conn.execute(f"ALTER TABLE assignments ADD COLUMN {col}")
+        except:
+            pass  # already there, move on
     conn.execute("""CREATE TABLE IF NOT EXISTS achievements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        assignment_id INTEGER,  -- which assignment this belongs to
+        assignment_id INTEGER,
         type TEXT,
-        label TEXT,  -- the text that shows up on screen
+        label TEXT,
         earned_at TEXT DEFAULT (datetime('now'))
     )""")
     conn.commit()
     conn.close()
 
 
-# takes whatever the user typed as deadline and turns it into a proper datetime string so the database can sort correctly
+# turn whatever date string the user typed into ISO format so sqlite can sort it
+# returns None if nothing matched so the caller can reject it instead of storing garbage
 def parse_deadline(raw):
     raw = raw.strip().replace("T", " ")
-    for fmt in ["%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y"]:
+    for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+                "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%Y"]:
         try:
             return datetime.strptime(raw, fmt).isoformat()
         except:
             pass
-    return None  # return None if nothing worked instead of storing garbage
+    return None
 
 
-# deciding what achievent to give
+# pick an achievement based on how many days early the assignment was finished
 def get_achievement(deadline_str, completed_str):
     try:
         deadline = datetime.fromisoformat(deadline_str)
@@ -63,16 +83,15 @@ def get_achievement(deadline_str, completed_str):
         else:
             return {"type": "late", "label": "Better late than never I guess."}
     except:
-        return None  # if the date parsing fails just don't give an achievement
+        return None  # bad date strings, just skip
 
 
-# displays html when opened in browser
 @app.route("/")
 def index():
     return send_from_directory(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
 
-# returns assignments sorted by deadline, incomplete first
+# all assignments, incomplete first, then sorted by deadline
 @app.route("/api/assignments", methods=["GET"])
 def get_assignments():
     conn = sqlite3.connect(DB)
@@ -82,8 +101,7 @@ def get_assignments():
     return jsonify([dict(r) for r in rows])
 
 
-# adds new assignment to database
-@app.route("/api/assignments", methods=["POST"])
+# title and deadline are required, everything else optional
 @app.route("/api/assignments", methods=["POST"])
 def add_assignment():
     data = request.json
@@ -92,19 +110,18 @@ def add_assignment():
 
     deadline = parse_deadline(data["deadline"])
 
-    # reject if the date string was unreadable
     if deadline is None:
         return jsonify({"error": "invalid date format"}), 400
 
-    # reject if the deadline is in the past
     if datetime.fromisoformat(deadline) < datetime.now():
         return jsonify({"error": "deadline is in the past"}), 400
 
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     cur = conn.execute(
-        "INSERT INTO assignments (title, subject, deadline, notes) VALUES (?, ?, ?, ?)",
-        (data["title"], data.get("subject", ""), deadline, data.get("notes", ""))
+        "INSERT INTO assignments (title, subject, deadline, notes, estimated_hours, estimated_breakdown) VALUES (?, ?, ?, ?, ?, ?)",
+        (data["title"], data.get("subject", ""), deadline, data.get("notes", ""),
+         data.get("estimated_hours"), data.get("estimated_breakdown"))
     )
     conn.commit()
     row = conn.execute("SELECT * FROM assignments WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -112,7 +129,7 @@ def add_assignment():
     return jsonify(dict(row)), 201
 
 
-# handles marking as done/undone, and also any field edits
+# handles both completion toggling and regular field edits
 @app.route("/api/assignments/<int:id>", methods=["PATCH"])
 def update_assignment(id):
     data = request.json
@@ -129,7 +146,7 @@ def update_assignment(id):
 
     if "completed" in data:
         if data["completed"] and not assignment["completed"]:
-            # marking as done: save the time and check for an achievement
+            # marking done: record when and check if they earned a badge
             now = datetime.now().isoformat()
             conn.execute("UPDATE assignments SET completed = 1, completed_at = ? WHERE id = ?", (now, id))
             ach = get_achievement(assignment["deadline"], now)
@@ -140,11 +157,11 @@ def update_assignment(id):
                 )
                 new_achievement = ach
         elif not data["completed"]:
-            # unmarking as done and remove the achievement
+            # unmarking as done, undo everything
             conn.execute("UPDATE assignments SET completed = 0, completed_at = NULL WHERE id = ?", (id,))
             conn.execute("DELETE FROM achievements WHERE assignment_id = ?", (id,))
 
-    # updates any other fields
+    # update whichever text fields were included in the request
     for field in ["title", "subject", "deadline", "notes"]:
         if field in data:
             conn.execute(f"UPDATE assignments SET {field} = ? WHERE id = ?", (data[field], id))
@@ -153,12 +170,13 @@ def update_assignment(id):
     updated = dict(conn.execute("SELECT * FROM assignments WHERE id = ?", (id,)).fetchone())
     conn.close()
 
+    # attach the achievement to the response so the UI can show the badge right away
     if new_achievement:
         updated["new_achievement"] = new_achievement
     return jsonify(updated)
 
 
-# deletes an assignment and its achievement if it exists
+# delete the assignment and its achievement if there is one
 @app.route("/api/assignments/<int:id>", methods=["DELETE"])
 def delete_assignment(id):
     conn = sqlite3.connect(DB)
@@ -169,7 +187,7 @@ def delete_assignment(id):
     return jsonify({"deleted": id})
 
 
-# returns all earned achievements with the assignment title attached
+# all achievements, newest first, with the assignment title joined in
 @app.route("/api/achievements", methods=["GET"])
 def get_achievements():
     conn = sqlite3.connect(DB)
@@ -182,6 +200,70 @@ def get_achievements():
     """).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+# ask ollama to estimate keyboard time for the assignment
+@app.route("/api/estimate", methods=["POST"])
+def estimate():
+    data = request.get_json()
+    description = data.get("description", "").strip()
+    if not description:
+        return jsonify({"error": "no description provided"}), 400
+
+    # few-shot prompt with concrete examples so the model has a reference frame to calibrate against
+    # low temperature keeps the output consistent across repeated calls
+    prompt = f"""Estimate keyboard time only for a first-year CS student doing this assignment. Keyboard time means actively typing and testing code — not reading the task, not thinking, not watching tutorials.
+
+Examples (use these to calibrate your answer):
+- "print hello world" -> 0.25h
+- "write a for loop that prints 1 to 10" -> 0.25h
+- "function that returns whether a number is even" -> 0.25h
+- "function that checks if a number is prime" -> 0.5h
+- "simple calculator with +/-/*// using if/else" -> 0.5h
+- "flask route that returns JSON from a list" -> 0.5h
+- "read a CSV and print rows that match a condition" -> 0.75h
+- "todo app with add, delete, and list commands" -> 1.25h
+- "flask app with a database and two routes" -> 1.5h
+
+Assignment: {description}
+
+Rules:
+- Single-concept exercises usually take 0.25h to 0.5h
+- Multi-step exercises: 0.5h to 1.0h
+- Small projects: 1.0h to 2.0h
+- Never output more than 2.0
+- When unsure, pick the lower end
+
+Reply ONLY with this JSON, nothing else:
+{{"hours": <number>}}"""
+
+    try:
+        res = requests.post(OLLAMA_URL, json={
+            "model": MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "num_predict": 32  # the reply is tiny, no need to let it ramble
+            }
+        }, timeout=30)
+
+        raw = res.json()["response"]
+        match = re.search(r'\{.*?\}', raw, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group())
+            h = float(parsed.get("hours", 0.5))
+
+            # small models overshoot even with a strict prompt, scale down a bit
+            h = h * 0.75
+
+            return jsonify({"hours": round(max(0.25, min(2.0, h)), 2)})
+
+        return jsonify({"error": "model gave an unexpected response"}), 500
+    except requests.exceptions.ConnectionError:
+        return jsonify({"error": "ollama is not running - start it with: ollama serve"}), 503
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
