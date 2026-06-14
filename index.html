@@ -26,6 +26,8 @@
       margin-bottom: 20px;
     }
 
+    /* ── add form ─────────────────────────────────────────── */
+
     .add-form {
       background: #252525;
       padding: 20px;
@@ -57,6 +59,9 @@
 
     .add-form input::placeholder, .add-form textarea::placeholder { color: #555; }
 
+    /* makes the native date/time picker icon visible on dark backgrounds */
+    input[type="date"], input[type="time"] { color-scheme: dark; }
+
     .add-form button {
       padding: 8px 18px;
       background-color: #ff6b35;
@@ -68,6 +73,8 @@
     }
 
     .add-form button:hover { background-color: #e55a25; }
+
+    /* ── filters + stats ─────────────────────────────────── */
 
     .filters {
       margin-bottom: 10px;
@@ -96,7 +103,8 @@
 
     .stats b { color: #ff6b35; }
 
-    /* two column layout: table on left, achievements on right */
+    /* ── main layout: table + achievements sidebar ────────── */
+
     .main-layout {
       display: flex;
       gap: 16px;
@@ -111,7 +119,7 @@
       border-spacing: 0;
       background: #252525;
       border-radius: 10px;
-      overflow: hidden;
+      overflow: hidden; /* needed to clip the corners against border-radius */
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
 
@@ -139,6 +147,7 @@
       color: #555;
     }
 
+    /* urgency row highlights — applied based on how much time is left */
     tr.urgent-red    { background-color: #2e1515; }
     tr.urgent-orange { background-color: #2e2010; }
     tr.urgent-yellow { background-color: #252510; }
@@ -150,12 +159,13 @@
       border: none;
       font-size: 13px;
       padding: 0;
-      opacity: 0.4;
+      opacity: 0.4; /* subtle by default, full opacity on hover */
     }
 
     .delete-btn:hover { opacity: 1; }
 
-    /* achievements sidebar */
+    /* ── achievements sidebar ─────────────────────────────── */
+
     #achievements {
       width: 220px;
       flex-shrink: 0;
@@ -179,6 +189,8 @@
     }
 
     #achievements li { margin-bottom: 8px; line-height: 1.4; }
+
+    /* ── toast notification ───────────────────────────────── */
 
     #toast {
       position: fixed;
@@ -210,6 +222,7 @@
 <h1>DEADLines</h1>
 <p class="subtitle">Companion for schoolwork</p>
 
+<!-- ── add form ──────────────────────────────────────────── -->
 <div class="add-form">
   <b>Add new assignment</b><br><br>
 
@@ -217,26 +230,31 @@
   <input type="text" id="f-title" placeholder="Enter assignment">
 
   <label>Subject:</label>
-  <input type="text" id="f-subject" placeholder="Enter a subject">
+  <!-- datalist is populated from existing subjects so you can reuse them without retyping -->
+  <input type="text" id="f-subject" list="subject-suggestions" placeholder="Enter a subject" autocomplete="off">
+  <datalist id="subject-suggestions"></datalist>
 
   <label>DEADLine:</label>
+  <!-- split into two inputs so the browser gives us separate date and time pickers -->
   <div style="display:flex; gap:8px; margin-bottom:10px">
     <div style="flex:2">
       <label style="font-size:13px; color:#666">Date</label>
-      <input type="text" id="f-date" placeholder="mm/dd/yyyy" style="width:100%; display:block; padding:8px 10px; box-sizing:border-box; border:1px solid #3a3a3a; border-radius:6px; font-size:14px; background:#1a1a1a; color:#e0e0e0;">
+      <input type="date" id="f-date" style="width:100%; display:block; padding:8px 10px; box-sizing:border-box; border:1px solid #3a3a3a; border-radius:6px; font-size:14px; background:#1a1a1a; color:#e0e0e0; color-scheme:dark;">
     </div>
     <div style="flex:1">
       <label style="font-size:13px; color:#666">Time</label>
-      <input type="text" id="f-time" placeholder="00:00 - 23:59" style="width:100%; display:block; padding:8px 10px; box-sizing:border-box; border:1px solid #3a3a3a; border-radius:6px; font-size:14px; background:#1a1a1a; color:#e0e0e0;">
+      <input type="time" id="f-time" style="width:100%; display:block; padding:8px 10px; box-sizing:border-box; border:1px solid #3a3a3a; border-radius:6px; font-size:14px; background:#1a1a1a; color:#e0e0e0; color-scheme:dark;">
     </div>
   </div>
 
   <label>Notes (optional):</label>
-  <textarea id="f-notes" rows="2" placeholder="Any notes"></textarea>
+  <!-- also used as the description sent to ollama for the time estimate -->
+  <textarea id="f-notes" rows="2" placeholder="Describe the assignment to get a time estimate"></textarea>
 
-  <button onclick="addAssignment()">Add</button>
+  <button id="add-btn" onclick="addAssignment()">Add</button>
 </div>
 
+<!-- ── filters ───────────────────────────────────────────── -->
 <div class="filters">
   <b style="color:#888">Filter:</b>
   <button onclick="setFilter('all')">All</button>
@@ -244,16 +262,18 @@
   <button onclick="setFilter('done')">Done</button>
 </div>
 
+<!-- ── stats bar ─────────────────────────────────────────── -->
 <p class="stats">
   Active: <b id="stat-active">0</b> &nbsp;|&nbsp;
   Done: <b id="stat-done">0</b> &nbsp;|&nbsp;
   Achievements: <b id="stat-ach">0</b>
 </p>
 
-<!-- two column layout -->
+<!-- ── main content ──────────────────────────────────────── -->
 <div class="main-layout">
 
   <div class="table-col">
+    <!-- shown when no assignments match the current filter -->
     <p id="empty-msg" style="display:none">This is where your assignments will show up!</p>
     <table id="assignments-table">
       <thead>
@@ -263,38 +283,59 @@
           <th>Subject</th>
           <th>Deadline</th>
           <th>Notes</th>
-          <th></th>
+          <th>Est. time</th>
+          <th></th> <!-- delete column, intentionally no header -->
         </tr>
       </thead>
       <tbody id="assignments-body"></tbody>
     </table>
   </div>
 
+  <!-- hidden until at least one achievement is earned -->
   <div id="achievements" style="display:none">
-    <h2>⟡ Achievements ⟡</h2>
+    <h2>Achievements</h2>
     <ul id="ach-list"></ul>
   </div>
 
 </div>
 
+<!-- bottom-right toast, shown briefly after add/complete actions -->
 <div id="toast"></div>
 
 <script>
 
-  var assignments = [];
+  var assignments  = [];
   var achievements = [];
   var currentFilter = 'all';
 
+  // load assignments and achievements on page load
   function boot() {
     fetch('/api/assignments')
       .then(function(r) { return r.json(); })
-      .then(function(data) { assignments = data; render(); });
+      .then(function(data) { assignments = data; render(); updateSubjectSuggestions(); });
 
     fetch('/api/achievements')
       .then(function(r) { return r.json(); })
       .then(function(data) { achievements = data; renderAchievements(); });
   }
 
+  // rebuild the subject datalist from subjects already in the assignments array
+  function updateSubjectSuggestions() {
+    var seen = {};
+    var datalist = document.getElementById('subject-suggestions');
+    datalist.innerHTML = '';
+    for (var i = 0; i < assignments.length; i++) {
+      var s = assignments[i].subject;
+      if (s && !seen[s]) {
+        seen[s] = true;
+        var opt = document.createElement('option');
+        opt.value = s;
+        datalist.appendChild(opt);
+      }
+    }
+  }
+
+  // return the CSS class to apply to a row based on urgency or completion
   function getRowColor(assignment) {
     if (assignment.completed) return 'done';
     var hoursLeft = (new Date(assignment.deadline) - Date.now()) / 3600000;
@@ -304,6 +345,7 @@
     return '';
   }
 
+  // format a deadline for display with a relative time hint tacked on
   function formatDeadline(isoString) {
     var date = new Date(isoString);
     var hoursLeft = (date - Date.now()) / 3600000;
@@ -317,7 +359,9 @@
 
   function setFilter(filter) { currentFilter = filter; render(); }
 
+  // re-render the table from the current assignments array + active filter
   function render() {
+    // sort: incomplete first, then by soonest deadline within each group
     var list = assignments.slice().sort(function(a, b) {
       if (a.completed != b.completed) return a.completed ? 1 : -1;
       return new Date(a.deadline) - new Date(b.deadline);
@@ -365,6 +409,17 @@
       var deadlineCell = document.createElement('td'); deadlineCell.textContent = formatDeadline(a.deadline);
       var notesCell    = document.createElement('td'); notesCell.innerHTML = '<small>' + (a.notes || '') + '</small>';
 
+      // show as minutes if under an hour, hours otherwise
+      var estCell = document.createElement('td');
+      if (a.estimated_hours) {
+        var estDisplay = a.estimated_hours < 1
+          ? '~' + Math.round(a.estimated_hours * 60) + ' min'
+          : '~' + a.estimated_hours + 'h';
+        estCell.innerHTML = '<span style="color:#ff6b35">' + estDisplay + '</span>';
+      } else {
+        estCell.innerHTML = '<small style="color:#444">—</small>';
+      }
+
       var deleteCell = document.createElement('td');
       var deleteBtn  = document.createElement('button');
       deleteBtn.className = 'delete-btn';
@@ -378,6 +433,7 @@
       row.appendChild(subjectCell);
       row.appendChild(deadlineCell);
       row.appendChild(notesCell);
+      row.appendChild(estCell);
       row.appendChild(deleteCell);
       tbody.appendChild(row);
     }
@@ -396,38 +452,107 @@
     }
   }
 
-  function addAssignment() {
+  function estimateTime() {
+    var notes = document.getElementById('f-notes').value.trim();
+    if (!notes) { alert('Describe the assignment in the notes field first.'); return; }
+
+    var btn = document.getElementById('estimate-btn');
+    var result = document.getElementById('estimate-result');
+    btn.textContent = 'Estimating...';
+    btn.disabled = true;
+    result.style.display = 'none';
+
+    fetch('/api/estimate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: notes })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.textContent = 'Estimate time';
+      btn.disabled = false;
+      if (data.error) { alert('Could not estimate: ' + data.error); return; }
+      document.getElementById('estimate-hours').textContent = data.hours + 'h';
+      document.getElementById('estimate-breakdown').textContent = data.breakdown;
+      result.style.display = 'block';
+    })
+    .catch(function() {
+      btn.textContent = 'Estimate time';
+      btn.disabled = false;
+      alert('Could not reach Ollama. Make sure it\'s running (ollama serve).');
+    });
+  }
+
+  async function addAssignment() {
     var title   = document.getElementById('f-title').value.trim();
     var subject = document.getElementById('f-subject').value.trim();
     var date    = document.getElementById('f-date').value;
-    var time    = document.getElementById('f-time').value.trim() || '23:59';
+    var time    = document.getElementById('f-time').value.trim() || '23:59'; // default to end of day
     var notes   = document.getElementById('f-notes').value.trim();
 
     if (!title) { alert('Please enter a title!'); return; }
     if (!date)  { alert('Please set a deadline date!'); return; }
 
+    // combine date + time into the format the backend expects
     var deadline = date + 'T' + time + ':00';
+    var btn = document.getElementById('add-btn');
+    btn.disabled = true;
 
-    fetch('/api/assignments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, subject: subject, deadline: deadline, notes: notes })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(newAssignment) {
-      if (newAssignment.error) { alert(newAssignment.error); return; }
-      assignments.unshift(newAssignment);
-      document.getElementById('f-title').value   = '';
-      document.getElementById('f-subject').value = '';
-      document.getElementById('f-date').value    = '';
-      document.getElementById('f-time').value    = '';
-      document.getElementById('f-notes').value   = '';
-      render();
-      showToast('Added!');
-    });
+    // if there are notes, run the estimate first before saving
+    var estimatedHours = null;
+    var estimatedBreakdown = null;
+    if (notes) {
+      btn.textContent = 'Estimating...';
+      try {
+        var er = await fetch('/api/estimate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ description: notes })
+        });
+        var ed = await er.json();
+        if (!ed.error) {
+          estimatedHours = ed.hours;
+          estimatedBreakdown = ed.breakdown;
+        }
+      } catch(e) {
+        // ollama probably isn't running, just skip the estimate and add anyway
+      }
+    }
+
+    btn.textContent = 'Adding...';
+    try {
+      var r = await fetch('/api/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title, subject: subject, deadline: deadline, notes: notes,
+          estimated_hours: estimatedHours, estimated_breakdown: estimatedBreakdown
+        })
+      });
+      var newAssignment = await r.json();
+      if (newAssignment.error) { alert(newAssignment.error); }
+      else {
+        assignments.unshift(newAssignment);
+        updateSubjectSuggestions();
+        // clear the form
+        document.getElementById('f-title').value   = '';
+        document.getElementById('f-subject').value = '';
+        document.getElementById('f-date').value    = '';
+        document.getElementById('f-time').value    = '';
+        document.getElementById('f-notes').value   = '';
+        render();
+        showToast('Added!');
+      }
+    } catch(e) {
+      alert('Something went wrong adding the assignment.');
+    }
+
+    btn.textContent = 'Add';
+    btn.disabled = false;
   }
 
   function toggleDone(id) {
+    // find the assignment in the local array
     var assignment = null;
     for (var i = 0; i < assignments.length; i++) {
       if (assignments[i].id == id) { assignment = assignments[i]; break; }
@@ -441,9 +566,11 @@
     })
     .then(function(r) { return r.json(); })
     .then(function(updated) {
+      // update the local copy
       for (var i = 0; i < assignments.length; i++) {
         if (assignments[i].id == id) { assignments[i] = updated; break; }
       }
+      // if an achievement was earned, add it to the sidebar and show a toast
       if (updated.new_achievement) {
         achievements.unshift({ label: updated.new_achievement.label, assignment_title: updated.title });
         renderAchievements();
@@ -457,6 +584,7 @@
     if (!confirm('Delete this assignment?')) return;
     fetch('/api/assignments/' + id, { method: 'DELETE' })
       .then(function() {
+        // remove from both local arrays so the UI updates without a page reload
         assignments  = assignments.filter(function(a) { return a.id != id; });
         achievements = achievements.filter(function(a) { return a.assignment_id != id; });
         render();
@@ -469,10 +597,11 @@
     var toast = document.getElementById('toast');
     toast.textContent = message;
     toast.style.display = 'block';
-    clearTimeout(toastTimer);
+    clearTimeout(toastTimer); // reset if a second toast fires quickly
     toastTimer = setTimeout(function() { toast.style.display = 'none'; }, 2500);
   }
 
+  // re-render every minute so urgency colors and time-left labels stay current
   setInterval(render, 60000);
   boot();
 
