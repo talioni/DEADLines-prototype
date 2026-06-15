@@ -224,10 +224,10 @@
 
 <!-- ── add form ──────────────────────────────────────────── -->
 <div class="add-form">
-  <b>Add new assignment</b><br><br>
+  <b>Add a new assignment</b><br><br>
 
   <label>Title:</label>
-  <input type="text" id="f-title" placeholder="Enter assignment">
+  <input type="text" id="f-title" placeholder="Enter assignment title">
 
   <label>Subject:</label>
   <!-- datalist is populated from existing subjects so you can reuse them without retyping -->
@@ -247,7 +247,7 @@
     </div>
   </div>
 
-  <label>Notes (optional):</label>
+  <label>Describe your assignment</label>
   <!-- also used as the description sent to ollama for the time estimate -->
   <textarea id="f-notes" rows="2" placeholder="Describe the assignment to get a time estimate"></textarea>
 
@@ -274,7 +274,7 @@
 
   <div class="table-col">
     <!-- shown when no assignments match the current filter -->
-    <p id="empty-msg" style="display:none">This is where your assignments will show up!</p>
+    <p id="empty-msg" style="display:none">This is where you'll be able to see your assignments!</p>
     <table id="assignments-table">
       <thead>
         <tr>
